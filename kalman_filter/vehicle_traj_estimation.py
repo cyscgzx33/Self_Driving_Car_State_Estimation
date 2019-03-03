@@ -29,8 +29,8 @@ d = data['d']  # distance between robot center and laser rangefinder [m]
 
 v_var = 0.01  # translation velocity variance  
 om_var = 0.01  # rotational velocity variance 
-r_var = 0.1  # range measurements variance
-b_var = 0.1  # bearing measurement variance
+r_var = 0.1  # range measurements variance: Initial is 0.1
+b_var = 0.1  # bearing measurement variance: Initial is 0.1
 
 Q_km = np.diag([v_var, om_var]) # input noise covariance 
 cov_y = np.diag([r_var, b_var])  # measurement noise covariance 
@@ -59,25 +59,24 @@ def wraptopi(x):
 
 def measurement_update(lk, rk, bk, P_check, x_check):
     # 1. Compute measurement Jacobian
-    # ph1_x1 = -((l(1) - x_check(1) - d * np.cos(x_check(3))) ** 2 + (l(2) - x_check(2) - d * np.sin(x_check(3))) ** 2) ** (-0.5) * (l(1) - x_check(1) - d * np.cos(x_check(3)))
-    # ph1_x2 = -((l(1) - x_check(1) - d * np.cos(x_check(3))) ** 2 + (l(2) - x_check(2) - d * np.sin(x_check(3))) ** 2) ** (-0.5) * (l(2) - x_check(2) - d * np.sin(x_check(3)))
-    # ph1_x3 = ((l(1) - x_check(1) - d * np.cos(x_check(3))) ** 2 + (l(2) - x_check(2) - d * np.sin(x_check(3))) ** 2) ** (-0.5) * ( (l(1) - x_check(1) - d * np.cos(x_check(3))) * d * np.sin(x_check(3)) - (l(2) - x_check(2) - d * np.sin(x_check(3))) * d * np.cos(x_check(3)) )
-
-    # ph2_x1 = -1 / (1 + ((l(2) - x_check(2) - d * np.sin(x_check(3))) / (l(1) - x_check(1) - d * np.cos(x_check(3)))) ** 2) * (l(2) - x_check(2) - d * np.sin(x_check(3))) / (l(1) - x_check(1) - d * np.cos(x_check(3))) ** 2
-    # ph2_x2 = 1 / (1 + ((l(2) - x_check(2) - d * np.sin(x_check(3))) / (l(1) - x_check(1) - d * np.cos(x_check(3)))) ** 2) * (-1 / (l(1) - x_check(1) - d * np.cos(x_check(3))))
-    # ph2_x3 = 1 / (1 + ((l(2) - x_check(2) - d * np.sin(x_check(3))) / (l(1) - x_check(1) - d * np.cos(x_check(3)))) ** 2) * (-d * np.cos(x_check(3)) * (l(1) - x_check(1) - d * np.cos(x_check(3))) - d * np.sin(x_check(3)) * (l(2) - x_check(2) - d * np.sin(x_check(3)))) / (l(1) - x_check(1) - d * np.cos(x_check(3))) ** 2 - 1
     
-    # A data type change
+    ## 1.1 A data type change & preprocess
     dis = d[0]
+    x_check[2] = wraptopi(x_check[2])
+    bk = wraptopi(bk)
     
-    ph1_x1 = -((lk[0] - x_check[0] - dis * np.cos(x_check[2])) ** 2 + (lk[1] - x_check[1] - dis * np.sin(x_check[2])) ** 2) ** (-0.5) * (lk[0] - x_check[0] - dis * np.cos(x_check[2]))
-    ph1_x2 = -((lk[0] - x_check[0] - dis * np.cos(x_check[2])) ** 2 + (lk[1] - x_check[1] - dis * np.sin(x_check[2])) ** 2) ** (-0.5) * (lk[1] - x_check[1] - dis * np.sin(x_check[2]))
-    ph1_x3 = ((lk[0] - x_check[0] - dis * np.cos(x_check[2])) ** 2 + (lk[1] - x_check[1] - dis * np.sin(x_check[2])) ** 2) ** (-0.5) * ( (lk[0] - x_check[0] - dis * np.cos(x_check[2])) * dis * np.sin(x_check[2]) - (lk[1] - x_check[1] - dis * np.sin(x_check[2])) * dis * np.cos(x_check[2]) )
+    ## 1.2 Compute partial derivatives using the package sympy,
+    ##     The source code is within the script, "symbolic_solve.py"
+    ph1_x1 =  (dis*np.cos(x_check[2]) - lk[0] + x_check[0])/np.sqrt((-dis*np.sin(x_check[2]) + lk[1] - x_check[1])**2 + (-dis*np.cos(x_check[2]) + lk[0] - x_check[0])**2)
+    ph1_x2 =  (dis*np.sin(x_check[2]) - lk[1] + x_check[1])/np.sqrt((-dis*np.sin(x_check[2]) + lk[1] - x_check[1])**2 + (-dis*np.cos(x_check[2]) + lk[0] - x_check[0])**2)
+    ph1_x3 =  (-dis*(-dis*np.sin(x_check[2]) + lk[1] - x_check[1])*np.cos(x_check[2]) + dis*(-dis*np.cos(x_check[2]) + lk[0] - x_check[0])*np.sin(x_check[2]))/np.sqrt((-dis*np.sin(x_check[2]) + lk[1] - x_check[1])**2 + (-dis*np.cos(x_check[2]) + lk[0] - x_check[0])**2)
+    
+    ph2_x1 =  -(dis*np.sin(x_check[2]) - lk[1] + x_check[1])/((-dis*np.sin(x_check[2]) + lk[1] - x_check[1])**2 + (-dis*np.cos(x_check[2]) + lk[0] - x_check[0])**2)
+    ph2_x2 =  -(-dis*np.cos(x_check[2]) + lk[0] - x_check[0])/((-dis*np.sin(x_check[2]) + lk[1] - x_check[1])**2 + (-dis*np.cos(x_check[2]) + lk[0] - x_check[0])**2)
+    ph2_x3 =  dis*(dis*np.sin(x_check[2]) - lk[1] + x_check[1])*np.sin(x_check[2])/((-dis*np.sin(x_check[2]) + lk[1] - x_check[1])**2 + (-dis*np.cos(x_check[2]) + lk[0] - x_check[0])**2) - dis*(-dis*np.cos(x_check[2]) + lk[0] - x_check[0])*np.cos(x_check[2])/((-dis*np.sin(x_check[2]) + lk[1] - x_check[1])**2 + (-dis*np.cos(x_check[2]) + lk[0] - x_check[0])**2) - 1
 
-    ph2_x1 = -1 / (1 + ((lk[1] - x_check[1] - dis * np.sin(x_check[2])) / (lk[0] - x_check[0] - dis * np.cos(x_check[2]))) ** 2) * (lk[1] - x_check[1] - dis * np.sin(x_check[2])) / (lk[0] - x_check[0] - dis * np.cos(x_check[2])) ** 2
-    ph2_x2 = 1 / (1 + ((lk[1] - x_check[1] - dis * np.sin(x_check[2])) / (lk[0] - x_check[0] - dis * np.cos(x_check[2]))) ** 2) * (-1 / (lk[0] - x_check[0] - dis * np.cos(x_check[2])))
-    ph2_x3 = 1 / (1 + ((lk[1] - x_check[1] - dis * np.sin(x_check[2])) / (lk[0] - x_check[0] - dis * np.cos(x_check[2]))) ** 2) * (-dis * np.cos(x_check[2]) * (lk[0] - x_check[0] - dis * np.cos(x_check[2])) - dis * np.sin(x_check[2]) * (lk[1] - x_check[1] - dis * np.sin(x_check[2]))) / (lk[0] - x_check[0] - dis * np.cos(x_check[2])) ** 2 - 1
-
+    
+    
     H_k = np.array([[ph1_x1, ph1_x2, ph1_x3], [ph2_x1, ph2_x2, ph2_x3]])
     
     M_k = np.eye(2)
@@ -117,6 +116,7 @@ def measurement_update(lk, rk, bk, P_check, x_check):
     
     ## 3-2: compute y_l_k
     y_l_k = np.array([rk, bk]).T
+    y_l_k[1] = wraptopi(y_l_k[1])
     
     ## 3-3: compute x_hat
     x_hat = x_check + K_k @ (y_l_k - y_check)
@@ -135,9 +135,12 @@ def measurement_update(lk, rk, bk, P_check, x_check):
 
 
 
+
+
 ''' Part IV: Main loop
 '''
 
+#### 5. Main Filter Loop #######################################################################
 for k in range(1, len(t)):  # start at 1 because we've set the initial prediciton
 
     delta_t = t[k] - t[k - 1]  # time step (difference between timestamps)
@@ -153,17 +156,19 @@ for k in range(1, len(t)):  # start at 1 because we've set the initial predicito
     # 2. Motion model jacobian with respect to last state
     F_km = np.zeros([3, 3])
     F_km = np.eye(3)
-    
+    F_km[0, 2] = -np.sin(x_est[k-1, 2]) * v[k] * delta_t
+    F_km[1, 2] = np.cos(x_est[k-1, 2]) * om[k] * delta_t
     
     
     # 3. Motion model jacobian with respect to noise
     L_km = np.zeros([3, 2])
-    L_km[0, 0] = np.cos(x_est[k-1, 2])
-    L_km[1, 0] = np.sin(x_est[k-1, 2])
-    L_km[2, 1] = 1
+    L_km[0, 0] = np.cos(x_est[k-1, 2]) * delta_t
+    L_km[1, 0] = np.sin(x_est[k-1, 2]) * delta_t
+    L_km[2, 1] = 1 * delta_t
     
     ## Supplement of # 1.
     x_check = x_est[k-1] + delta_t * L_km @ u_k_minus_1
+    
     
     # -------- Wrap-up check point 4: --------- #
     x_check[2] = wraptopi(x_check[2])
