@@ -27,8 +27,8 @@ l = data['l']  # x,y positions of landmarks [m]
 d = data['d']  # distance between robot center and laser rangefinder [m]
 
 
-v_var = 0.01  # translation velocity variance  
-om_var = 0.01  # rotational velocity variance 
+v_var = 1  # translation velocity variance: Initial is 0.01
+om_var = 5  # rotational velocity variance: Initial is 0.01
 r_var = 0.1  # range measurements variance: Initial is 0.1
 b_var = 0.1  # bearing measurement variance: Initial is 0.1
 
@@ -59,7 +59,6 @@ def wraptopi(x):
 
 def measurement_update(lk, rk, bk, P_check, x_check):
     # 1. Compute measurement Jacobian
-    
     ## 1.1 A data type change & preprocess
     dis = d[0]
     x_check[2] = wraptopi(x_check[2])
@@ -137,6 +136,7 @@ def measurement_update(lk, rk, bk, P_check, x_check):
 
 
 
+
 ''' Part IV: Main loop
 '''
 
@@ -156,8 +156,8 @@ for k in range(1, len(t)):  # start at 1 because we've set the initial predicito
     # 2. Motion model jacobian with respect to last state
     F_km = np.zeros([3, 3])
     F_km = np.eye(3)
-    F_km[0, 2] = -np.sin(x_est[k-1, 2]) * v[k] * delta_t
-    F_km[1, 2] = np.cos(x_est[k-1, 2]) * om[k] * delta_t
+    F_km[0, 2] = -np.sin(x_est[k-1, 2]) * v[k] * delta_t # initially it's v[k] # v[k-1] passed the test
+    F_km[1, 2] = np.cos(x_est[k-1, 2]) * v[k] * delta_t # initially it's om[k] # v[k-1] passed the test
     
     
     # 3. Motion model jacobian with respect to noise
