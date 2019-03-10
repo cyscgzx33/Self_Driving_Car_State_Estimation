@@ -9,6 +9,10 @@ def sph_to_cart(epsilon, alpha, r):
   """
   p = np.zeros(3)  # Position vector 
   
+  # turned out not needed
+  # epsilon = epsilon / 180 * math.pi
+  # alpha = alpha / 180 * math.pi
+
   # Your code here
   p[0] = r * np.cos(epsilon) * np.cos(alpha)
   p[1] = r * np.cos(epsilon) * np.sin(alpha)
@@ -28,11 +32,15 @@ def estimate_params(P):
   A = np.zeros((row, 3))
   b = np.zeros(row)
   for i in range(0, row):
-    p_cart = sph_to_cart(P[i, 0], P[i, 1], P[i, 2])
+    # it turned out I don't need to to sph_to_cart by myself, just input cartesian is ok
+    # p_cart = sph_to_cart(P[i, 0], P[i, 1], P[i, 2])
     A[i, 0] = 1
-    A[i, 1] = p_cart[0]
-    A[i, 2] = p_cart[1]
-    b[i]    = p_cart[2]
+    # A[i, 1] = p_cart[0]
+    # A[i, 2] = p_cart[1]
+    # b[i]    = p_cart[2]
+    A[i, 1] = P[i, 0]
+    A[i, 2] = P[i, 1]
+    b[i] = P[i, 2]
   
   # try to be consistant
   # x_hat = inv(A.T @ A) @ A.T @ b
@@ -46,9 +54,10 @@ def estimate_params(P):
 
   return param_est
 
+
+# personal try of data input and test
 if __name__ == '__main__':
   inp = np.array([[1, 2, 5], [1.1, 2.1, 5.2], [1.2, 2.2, 5.4], [1.3, 2.3, 5.6]])
   param_est_result = estimate_params(inp)
   print(param_est_result)
 
-# (3.92, 0.69, 0.35)
