@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from rotations import angle_normalize, rpy_jacobian_axis_angle, skew_symmetric, Quaternion
+from numpy.linalg import inv
 
 #### 1. Data ###################################################################################
 
@@ -84,6 +85,7 @@ C_li = np.array([
 #      [-0.04998,  0.04992,  0.9975 ]
 # ])
 
+# translation vector
 t_i_li = np.array([0.5, 0.1, 0.5])
 
 # Transform from the LIDAR frame to the vehicle (IMU) frame.
@@ -135,13 +137,31 @@ lidar_i = 0
 # a function for it.
 ################################################################################################
 def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
+    
+    # construct H_k = [I, 0, 0] (size = 3 x 9)
+    H_k = np.zeros(3, 9)
+    H_k[0][0] = 1
+    H_k[1][1] = 1
+    H_k[2][2] = 1
+
     # 3.1 Compute Kalman Gain
+    # evaluate size chain: (9 x 9) x (9 x 3) x ( (3 x 9) x (9 x 9) x (9 x 3) + (3 x 3) )
+    # K_k should have a size: (9 x 3)
+    K_k = p_cov_check @ H_k.T @ inv(H_k @ p_cov_check @ H_k.T + sensor_var)
 
     # 3.2 Compute error state
+    # evaluate size chain: (9 x 3) x ( (3 x 1) - (3 x 1) )
+    # delta_x_k should have a size: (9 x 1)
+    delta_x_k = K_k @ (y_k - p_check)
 
     # 3.3 Correct predicted state
+    p_hat = p_check + delta_x_k[0:2]
+    v_hat = v_check + delta_x_k[3:5]
+    # q_hat = ??? weird algebraic calculation
 
     # 3.4 Compute corrected covariance
+    # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
+    p_cov_hat = ( np.identity(9) - K_k @ H_k ) @ p_cov_check
 
     return p_hat, v_hat, q_hat, p_cov_hat
 
@@ -155,7 +175,7 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     delta_t = imu_f.t[k] - imu_f.t[k - 1]
 
     # 1. Update state with IMU inputs
-
+    
     # 1.1 Linearize the motion model and compute Jacobians
 
     # 2. Propagate uncertainty
