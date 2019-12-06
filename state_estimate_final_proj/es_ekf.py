@@ -125,7 +125,7 @@ p_cov = np.zeros([imu_f.data.shape[0], 9, 9])  # covariance matrices at each tim
 # Set initial values.
 p_est[0] = gt.p[0]
 v_est[0] = gt.v[0]
-q_est[0] = Quaternion(euler=gt.r[0]).to_numpy()
+q_est[0] = Quaternion( euler = gt.r[0] ).to_numpy()
 p_cov[0] = np.zeros(9)  # covariance of estimate
 gnss_i  = 0
 lidar_i = 0
@@ -157,7 +157,7 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     # 3.3 Correct predicted state
     p_hat = p_check + delta_x_k[0:2]
     v_hat = v_check + delta_x_k[3:5]
-    # q_hat = ??? weird algebraic calculation
+    # q_hat = ??? weird algebraic calculation # TODO: understand how to process q
 
     # 3.4 Compute corrected covariance
     # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
@@ -171,18 +171,48 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
 # Now that everything is set up, we can start taking in the sensor data and creating estimates
 # for our state in a loop.
 ################################################################################################
+
+# Define some suppotive variables
+R_GNSS  =  np.identity(3) * var_gnss    # covariance matrix related to GNSS
+R_Lidar =  np.identity(3) * var_lidar   # covariance matrix related to Lidar
+t_imu   =  imu_f.t                      # timestanps of imu
+t_gnss  =  gnss.t                       # timestamps of gnss
+t_lidar =  lidar.t                      # timestamps of lidar 
+F_k     =  np.identity(9)
+L_k     =  np.zeros(9, 6)
+L_k[3:8, :] =  np.identity(6)
+Q       =  np.identity(6)               # covariance matrix related to noise of IMU
+Q[0:2, 0:2] = Q[0:2, 0:2] * var_imu_f   # covariance matrix related to special force of IMU
+Q[3:5, 3:5] = Q[3:5, 3:5] * var_imu_w   # covariance matrix related to rotational speed of IMU
+
 for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial prediction from gt
     delta_t = imu_f.t[k] - imu_f.t[k - 1]
 
+    Q_k = Q * delta_t * delta_t
+
     # 1. Update state with IMU inputs
-    
+    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_li @ f_k_1 + g) # TODO: obtain f_k_1; confirm C_ns == C_li 
+    v_est[k] = v_est[k-1] + delta_t * (C_li @ f_k_1 + g)                                 # TODO: obtain f_k_1; confirm C_ns == C_li
+    q_est[k] =                                                                           # TODO: understand how to process q
+
     # 1.1 Linearize the motion model and compute Jacobians
+    F_k[0:2, 3:5] = np.identity(3) * delta_t
+    # F_k[3:5, 6:8] = ??? * delta_t # TODO: understand how to process q
+    # where ??? = [C_{ns} f_{k-1}]_x, fill it out later
 
     # 2. Propagate uncertainty
+    p_cov = F_k @ p_cov @ F_k.T + L_k @ Q_k @ L_k.T
 
     # 3. Check availability of GNSS and LIDAR measurements
+    ## at t_imu[k] timestamp GNSS has input
+    if np.any( t_gnss == t_imu[k] ):
+        [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_GNSS, p_cov[k], gnss.data[k], p_est[k], v_est[k], q_est[k] )
+    
+    ## at t_imu[k] timestamp Lidar has input
+    if np.any( t_lidar == t_imu[k] ):
+        [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_Lidar, p_cov[k], gnss.data[k], p_est[k], v_est[k], q_est[k] )
 
-    # Update states (save)
+    # Update states (save) # TODO: make sure no extra processes needed
 
 #### 6. Results and Analysis ###################################################################
 
