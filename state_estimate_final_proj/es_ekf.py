@@ -138,20 +138,20 @@ lidar_i = 0
 ################################################################################################
 def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     
-    # construct H_k = [I, 0, 0] (size = 3 x 9)
-    H_k = np.zeros(3, 9)
+    # construct H_k = [I, 0, 0] (size = 3 x 10)
+    H_k = np.zeros(3, 10)
     H_k[0][0] = 1
     H_k[1][1] = 1
     H_k[2][2] = 1
 
     # 3.1 Compute Kalman Gain
-    # evaluate size chain: (9 x 9) x (9 x 3) x ( (3 x 9) x (9 x 9) x (9 x 3) + (3 x 3) )
-    # K_k should have a size: (9 x 3)
+    # evaluate size chain: (10 x 10) x (10 x 3) x ( (3 x 10) x (10 x 10) x (10 x 3) + (3 x 3) )
+    # K_k should have a size: (10 x 3)
     K_k = p_cov_check @ H_k.T @ inv(H_k @ p_cov_check @ H_k.T + sensor_var)
 
     # 3.2 Compute error state
-    # evaluate size chain: (9 x 3) x ( (3 x 1) - (3 x 1) )
-    # delta_x_k should have a size: (9 x 1)
+    # evaluate size chain: (10 x 3) x ( (3 x 1) - (3 x 1) )
+    # delta_x_k should have a size: (10 x 1)
     delta_x_k = K_k @ (y_k - p_check)
 
     # 3.3 Correct predicted state
@@ -160,8 +160,8 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     # q_hat = ??? weird algebraic calculation # TODO: understand how to process q
 
     # 3.4 Compute corrected covariance
-    # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
-    p_cov_hat = ( np.identity(9) - K_k @ H_k ) @ p_cov_check
+    # evaluate size chain: ( (10 x 10) - (10 x 3) x (3 x 10) ) x (10 x 10)
+    p_cov_hat = ( np.identity(10) - K_k @ H_k ) @ p_cov_check
 
     return p_hat, v_hat, q_hat, p_cov_hat
 
@@ -178,8 +178,8 @@ R_Lidar =  np.identity(3) * var_lidar   # covariance matrix related to Lidar
 t_imu   =  imu_f.t                      # timestanps of imu
 t_gnss  =  gnss.t                       # timestamps of gnss
 t_lidar =  lidar.t                      # timestamps of lidar 
-F_k     =  np.identity(9)
-L_k     =  np.zeros(9, 6)
+F_k     =  np.identity(10)
+L_k     =  np.zeros(10, 6)
 L_k[3:8, :] =  np.identity(6)
 Q       =  np.identity(6)               # covariance matrix related to noise of IMU
 Q[0:2, 0:2] = Q[0:2, 0:2] * var_imu_f   # covariance matrix related to special force of IMU
@@ -191,9 +191,39 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     Q_k = Q * delta_t * delta_t
 
     # 1. Update state with IMU inputs
-    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_li @ f_k_1 + g) # TODO: obtain f_k_1; confirm C_ns == C_li 
-    v_est[k] = v_est[k-1] + delta_t * (C_li @ f_k_1 + g)                                 # TODO: obtain f_k_1; confirm C_ns == C_li
-    q_est[k] =                                                                           # TODO: understand how to process q
+    ## 1-1: update position states
+    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_li @ imu_f.data[k-1] + g) # TODO: obtain f_k_1 (done, f_k_1 = imu_f.data[k-1]); confirm C_ns == C_li 
+    ## 1-2: update velocity states
+    v_est[k] = v_est[k-1] + delta_t * (C_li @ imu_f.data[k-1] + g)                                 # TODO: obtain f_k_1 (done, f_k_1 = imu_f.data[k-1]); confirm C_ns == C_li
+
+    ## 1-3: update orientation states
+    
+    ### construct theta increment
+    ### theta_icm: theta increament
+    ### size of theta_icm: (3 x 1)
+    theta_icm      = imu_w.data[k-1] * delta_t
+    theta_icm_norm = np.sqrt( theta_icm[0] ** 2 + theta_icm[1] ** 2 + theta_icm[2] ** 2 )
+    
+    ### construct quaternion based on theta increment
+    q_w = np.sin(theta_icm_norm / 2)
+    q_v = theta_icm / theta_icm_norm * np.cos(theta_icm_norm / 2)
+
+    ### construct quaternion process matrix based on the quaternion info
+    Omega = np.identity(4) * q_w 
+    Omega[0, 1:3]   = -q_v.T
+    Omega[1:3, 0]   = q_v
+    Omega[1:3, 0]   = q_v
+    q_R             = np.zeros(3, 3)
+    q_R[0, 1]       = q_v[2]
+    q_R[1, 0]       = -q_v[2]
+    q_R[0, 2]       = -q_v[1]
+    q_R[2, 0]       = q_v[1]
+    q_R[1, 2]       = q_v[0]
+    q_R[2, 1]       = -q_v[0]
+    Omega[1:3, 1:3] = q_R
+
+    ### finally, process quaternion state update
+    q_est[k] = Omega @ q_est[k-1]
 
     # 1.1 Linearize the motion model and compute Jacobians
     F_k[0:2, 3:5] = np.identity(3) * delta_t
