@@ -130,6 +130,64 @@ p_cov[0] = np.zeros(9)  # covariance of estimate
 gnss_i  = 0
 lidar_i = 0
 
+#### Util function: quaternion product (left) ##################################################
+
+################################################################################################
+# it computes: q(theta) "x" q = Omega_q_l @ q
+# input: theta 
+# output: Omega_q_l 
+################################################################################################
+def quaternion_left_prod(theta):
+
+    ### construct quaternion based on theta info
+    theta_icm_norm = np.sqrt( theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2 )
+    q_w = np.sin(theta_icm_norm / 2)
+    q_v = theta_icm / theta_icm_norm * np.cos(theta_icm_norm / 2)
+
+    Omega = np.identity(4) * q_w 
+    Omega[0, 1:3]   = -q_v.T
+    Omega[1:3, 0]   = q_v
+    Omega[1:3, 0]   = q_v
+    q_L             = np.zeros(3, 3)
+    q_L[0, 1]       = -q_v[2]
+    q_L[1, 0]       = q_v[2]
+    q_L[0, 2]       = q_v[1]
+    q_L[2, 0]       = -q_v[1]
+    q_L[1, 2]       = -q_v[0]
+    q_L[2, 1]       = q_v[0]
+    Omega[1:3, 1:3] = q_L
+
+    return Omega
+
+#### Util function: quaternion product (right) #################################################
+
+################################################################################################
+# it computes: q "x" q(theta) = Omega_q_r @ q
+# input: theta
+# output: Omega_q_r 
+################################################################################################
+def quaternion_right_prod(theta):
+
+    ### construct quaternion based on theta info
+    theta_icm_norm = np.sqrt( theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2 )
+    q_w = np.sin(theta_icm_norm / 2)
+    q_v = theta_icm / theta_icm_norm * np.cos(theta_icm_norm / 2)
+
+    Omega = np.identity(4) * q_w 
+    Omega[0, 1:3]   = -q_v.T
+    Omega[1:3, 0]   = q_v
+    Omega[1:3, 0]   = q_v
+    q_R             = np.zeros(3, 3)
+    q_R[0, 1]       = q_v[2]
+    q_R[1, 0]       = -q_v[2]
+    q_R[0, 2]       = -q_v[1]
+    q_R[2, 0]       = q_v[1]
+    q_R[1, 2]       = q_v[0]
+    q_R[2, 1]       = -q_v[0]
+    Omega[1:3, 1:3] = q_R
+
+    return Omega
+
 #### 4. Measurement Update #####################################################################
 
 ################################################################################################
@@ -138,30 +196,28 @@ lidar_i = 0
 ################################################################################################
 def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     
-    # construct H_k = [I, 0, 0] (size = 3 x 10)
-    H_k = np.zeros(3, 10)
-    H_k[0][0] = 1
-    H_k[1][1] = 1
-    H_k[2][2] = 1
+    # construct H_k = [I, 0, 0] (size = 3 x 9)
+    H_k = np.zeros(3, 9)
+    H_k[0:2, 0:2] = np.identity(3)
 
     # 3.1 Compute Kalman Gain
-    # evaluate size chain: (10 x 10) x (10 x 3) x ( (3 x 10) x (10 x 10) x (10 x 3) + (3 x 3) )
-    # K_k should have a size: (10 x 3)
+    # evaluate size chain: (9 x 9) x (9 x 3) x ( (3 x 9) x (9 x 9) x (9 x 3) + (3 x 3) )
+    # K_k should have a size: (9 x 3)
     K_k = p_cov_check @ H_k.T @ inv(H_k @ p_cov_check @ H_k.T + sensor_var)
 
     # 3.2 Compute error state
-    # evaluate size chain: (10 x 3) x ( (3 x 1) - (3 x 1) )
-    # delta_x_k should have a size: (10 x 1)
+    # evaluate size chain: (9 x 3) x ( (3 x 1) - (3 x 1) )
+    # delta_x_k should have a size: (9 x 1)
     delta_x_k = K_k @ (y_k - p_check)
 
     # 3.3 Correct predicted state
     p_hat = p_check + delta_x_k[0:2]
     v_hat = v_check + delta_x_k[3:5]
-    # q_hat = ??? weird algebraic calculation # TODO: understand how to process q
+    q_hat = quaternion_left_prod( delta_x_k[6:8] ) @ q_check
 
     # 3.4 Compute corrected covariance
-    # evaluate size chain: ( (10 x 10) - (10 x 3) x (3 x 10) ) x (10 x 10)
-    p_cov_hat = ( np.identity(10) - K_k @ H_k ) @ p_cov_check
+    # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
+    p_cov_hat = ( np.identity(9) - K_k @ H_k ) @ p_cov_check
 
     return p_hat, v_hat, q_hat, p_cov_hat
 
@@ -195,42 +251,16 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_li @ imu_f.data[k-1] + g) # TODO: obtain f_k_1 (done, f_k_1 = imu_f.data[k-1]); confirm C_ns == C_li 
     ## 1-2: update velocity states
     v_est[k] = v_est[k-1] + delta_t * (C_li @ imu_f.data[k-1] + g)                                 # TODO: obtain f_k_1 (done, f_k_1 = imu_f.data[k-1]); confirm C_ns == C_li
-
     ## 1-3: update orientation states
-    
-    ### construct theta increment
-    ### theta_icm: theta increament
-    ### size of theta_icm: (3 x 1)
-    theta_icm      = imu_w.data[k-1] * delta_t
-    theta_icm_norm = np.sqrt( theta_icm[0] ** 2 + theta_icm[1] ** 2 + theta_icm[2] ** 2 )
-    
-    ### construct quaternion based on theta increment
-    q_w = np.sin(theta_icm_norm / 2)
-    q_v = theta_icm / theta_icm_norm * np.cos(theta_icm_norm / 2)
+    q_est[k] = quaternion_right_prod(imu_w.data[k-1] * delta_t) @ q_est[k-1]
 
-    ### construct quaternion process matrix based on the quaternion info
-    Omega = np.identity(4) * q_w 
-    Omega[0, 1:3]   = -q_v.T
-    Omega[1:3, 0]   = q_v
-    Omega[1:3, 0]   = q_v
-    q_R             = np.zeros(3, 3)
-    q_R[0, 1]       = q_v[2]
-    q_R[1, 0]       = -q_v[2]
-    q_R[0, 2]       = -q_v[1]
-    q_R[2, 0]       = q_v[1]
-    q_R[1, 2]       = q_v[0]
-    q_R[2, 1]       = -q_v[0]
-    Omega[1:3, 1:3] = q_R
-
-    ### finally, process quaternion state update
-    q_est[k] = Omega @ q_est[k-1]
-
-    # 1.1 Linearize the motion model and compute Jacobians
+    # 2. Propagate uncertainty
+    ## 2-1: Linearize the motion model and compute Jacobians
     F_k[0:2, 3:5] = np.identity(3) * delta_t
     # F_k[3:5, 6:8] = ??? * delta_t # TODO: understand how to process q
     # where ??? = [C_{ns} f_{k-1}]_x, fill it out later
 
-    # 2. Propagate uncertainty
+    ## 2-2: execute the propagate uncertainty process
     p_cov = F_k @ p_cov @ F_k.T + L_k @ Q_k @ L_k.T
 
     # 3. Check availability of GNSS and LIDAR measurements
