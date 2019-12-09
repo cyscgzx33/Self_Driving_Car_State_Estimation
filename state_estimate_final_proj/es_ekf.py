@@ -130,6 +130,24 @@ p_cov[0] = np.zeros(9)  # covariance of estimate
 gnss_i  = 0
 lidar_i = 0
 
+#### Util function: skew operator ##############################################################
+
+################################################################################################
+# it computes: skew_operator(a) := { {0, -a_x, a_y}, {a_z, 0, -a_x}, {-a_y, a_x, 0} }
+# input: a (3 x 1 sized vector) 
+# output: op_mat (3 x 3 sized matrix) 
+################################################################################################
+def skew_operator(a):
+    op_mat = np.zeros(3, 3)
+    op_mat[0, 1] = -a[2]
+    op_mat[0, 2] = a[1]
+    op_mat[1, 0] = a[2]
+    op_mat[1, 2] = -a[0]
+    op_mat[2, 0] = -a[1]
+    op_mat[2, 1] = a[0]
+
+    return op_mat
+
 #### Util function: quaternion product (left) ##################################################
 
 ################################################################################################
@@ -140,22 +158,14 @@ lidar_i = 0
 def quaternion_left_prod(theta):
 
     ### construct quaternion based on theta info
-    theta_icm_norm = np.sqrt( theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2 )
-    q_w = np.sin(theta_icm_norm / 2)
-    q_v = theta_icm / theta_icm_norm * np.cos(theta_icm_norm / 2)
+    theta_norm = np.sqrt(theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2)
+    q_w = np.sin(theta_norm / 2)
+    q_v = theta / theta_norm * np.cos(theta_norm / 2)
 
     Omega = np.identity(4) * q_w 
     Omega[0, 1:3]   = -q_v.T
     Omega[1:3, 0]   = q_v
-    Omega[1:3, 0]   = q_v
-    q_L             = np.zeros(3, 3)
-    q_L[0, 1]       = -q_v[2]
-    q_L[1, 0]       = q_v[2]
-    q_L[0, 2]       = q_v[1]
-    q_L[2, 0]       = -q_v[1]
-    q_L[1, 2]       = -q_v[0]
-    q_L[2, 1]       = q_v[0]
-    Omega[1:3, 1:3] = q_L
+    Omega[1:3, 1:3] = skew_operator(q_v)
 
     return Omega
 
@@ -169,22 +179,14 @@ def quaternion_left_prod(theta):
 def quaternion_right_prod(theta):
 
     ### construct quaternion based on theta info
-    theta_icm_norm = np.sqrt( theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2 )
-    q_w = np.sin(theta_icm_norm / 2)
-    q_v = theta_icm / theta_icm_norm * np.cos(theta_icm_norm / 2)
+    theta_norm = np.sqrt(theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2)
+    q_w = np.sin(theta_norm / 2)
+    q_v = theta / theta_norm * np.cos(theta_norm / 2)
 
     Omega = np.identity(4) * q_w 
     Omega[0, 1:3]   = -q_v.T
     Omega[1:3, 0]   = q_v
-    Omega[1:3, 0]   = q_v
-    q_R             = np.zeros(3, 3)
-    q_R[0, 1]       = q_v[2]
-    q_R[1, 0]       = -q_v[2]
-    q_R[0, 2]       = -q_v[1]
-    q_R[2, 0]       = q_v[1]
-    q_R[1, 2]       = q_v[0]
-    q_R[2, 1]       = -q_v[0]
-    Omega[1:3, 1:3] = q_R
+    Omega[1:3, 1:3] = -skew_operator(q_v)
 
     return Omega
 
@@ -257,8 +259,7 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     # 2. Propagate uncertainty
     ## 2-1: Linearize the motion model and compute Jacobians
     F_k[0:2, 3:5] = np.identity(3) * delta_t
-    # F_k[3:5, 6:8] = ??? * delta_t # TODO: understand how to process q
-    # where ??? = [C_{ns} f_{k-1}]_x, fill it out later
+    F_k[3:5, 6:8] = -skew_operator( C_li @ imu_f[k-1] ) * delta_t
 
     ## 2-2: execute the propagate uncertainty process
     p_cov = F_k @ p_cov @ F_k.T + L_k @ Q_k @ L_k.T
