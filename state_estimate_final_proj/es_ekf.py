@@ -138,7 +138,7 @@ lidar_i = 0
 # output: op_mat (3 x 3 sized matrix) 
 ################################################################################################
 def skew_operator(a):
-    op_mat = np.zeros(3, 3)
+    op_mat = np.zeros([3, 3])
     op_mat[0, 1] = -a[2]
     op_mat[0, 2] = a[1]
     op_mat[1, 0] = a[2]
@@ -163,9 +163,9 @@ def quaternion_left_prod(theta):
     q_v = theta / theta_norm * np.cos(theta_norm / 2)
 
     Omega = np.identity(4) * q_w 
-    Omega[0, 1:3]   = -q_v.T
-    Omega[1:3, 0]   = q_v
-    Omega[1:3, 1:3] = skew_operator(q_v)
+    Omega[0, 1:4]   = -q_v.T
+    Omega[1:4, 0]   = q_v
+    Omega[1:4, 1:4] = skew_operator(q_v)
 
     return Omega
 
@@ -184,9 +184,9 @@ def quaternion_right_prod(theta):
     q_v = theta / theta_norm * np.cos(theta_norm / 2)
 
     Omega = np.identity(4) * q_w 
-    Omega[0, 1:3]   = -q_v.T
-    Omega[1:3, 0]   = q_v
-    Omega[1:3, 1:3] = -skew_operator(q_v)
+    Omega[0, 1:4]   = -q_v.T
+    Omega[1:4, 0]   = q_v
+    Omega[1:4, 1:4] = -skew_operator(q_v)
 
     return Omega
 
@@ -199,8 +199,8 @@ def quaternion_right_prod(theta):
 def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     
     # construct H_k = [I, 0, 0] (size = 3 x 9)
-    H_k = np.zeros(3, 9)
-    H_k[0:2, 0:2] = np.identity(3)
+    H_k = np.zeros([3, 9])
+    H_k[0:3, 0:3] = np.identity(3)
 
     # 3.1 Compute Kalman Gain
     # evaluate size chain: (9 x 9) x (9 x 3) x ( (3 x 9) x (9 x 9) x (9 x 3) + (3 x 3) )
@@ -213,9 +213,9 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     delta_x_k = K_k @ (y_k - p_check)
 
     # 3.3 Correct predicted state
-    p_hat = p_check + delta_x_k[0:2]
-    v_hat = v_check + delta_x_k[3:5]
-    q_hat = quaternion_left_prod( delta_x_k[6:8] ) @ q_check
+    p_hat = p_check + delta_x_k[0:3]
+    v_hat = v_check + delta_x_k[3:6]
+    q_hat = quaternion_left_prod( delta_x_k[6:9] ) @ q_check
 
     # 3.4 Compute corrected covariance
     # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
@@ -236,12 +236,12 @@ R_Lidar =  np.identity(3) * var_lidar   # covariance matrix related to Lidar
 t_imu   =  imu_f.t                      # timestanps of imu
 t_gnss  =  gnss.t                       # timestamps of gnss
 t_lidar =  lidar.t                      # timestamps of lidar 
-F_k     =  np.identity(10)
-L_k     =  np.zeros(10, 6)
-L_k[3:8, :] =  np.identity(6)
-Q       =  np.identity(6)               # covariance matrix related to noise of IMU
-Q[0:2, 0:2] = Q[0:2, 0:2] * var_imu_f   # covariance matrix related to special force of IMU
-Q[3:5, 3:5] = Q[3:5, 3:5] * var_imu_w   # covariance matrix related to rotational speed of IMU
+F_k     =  np.identity(9)               # TODO: confirm it's 10 or 9
+L_k         =  np.zeros([9, 6])         # TODO: confirm it's 10 or 9
+L_k[3:9, :] =  np.identity(6)
+Q           =  np.identity(6)           # covariance matrix related to noise of IMU
+Q[0:3, 0:3] = Q[0:3, 0:3] * var_imu_f   # covariance matrix related to special force of IMU
+Q[3:6, 3:6] = Q[3:6, 3:6] * var_imu_w   # covariance matrix related to rotational speed of IMU
 
 for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial prediction from gt
     delta_t = imu_f.t[k] - imu_f.t[k - 1]
@@ -258,8 +258,8 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
 
     # 2. Propagate uncertainty
     ## 2-1: Linearize the motion model and compute Jacobians
-    F_k[0:2, 3:5] = np.identity(3) * delta_t
-    F_k[3:5, 6:8] = -skew_operator( C_li @ imu_f[k-1] ) * delta_t
+    F_k[0:3, 3:6] = np.identity(3) * delta_t
+    F_k[3:6, 6:9] = -skew_operator( C_li @ imu_f.data[k-1] ) * delta_t
 
     ## 2-2: execute the propagate uncertainty process
     p_cov = F_k @ p_cov @ F_k.T + L_k @ Q_k @ L_k.T
@@ -268,7 +268,7 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     ## at t_imu[k] timestamp GNSS has input
     if np.any( t_gnss == t_imu[k] ):
         [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_GNSS, p_cov[k], gnss.data[k], p_est[k], v_est[k], q_est[k] )
-    
+
     ## at t_imu[k] timestamp Lidar has input
     if np.any( t_lidar == t_imu[k] ):
         [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_Lidar, p_cov[k], gnss.data[k], p_est[k], v_est[k], q_est[k] )
