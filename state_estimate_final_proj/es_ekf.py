@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from rotations import angle_normalize, rpy_jacobian_axis_angle, skew_symmetric, Quaternion
 from numpy.linalg import inv
+import rotations
 
 #### 1. Data ###################################################################################
 
@@ -15,9 +16,11 @@ from numpy.linalg import inv
 # This is where you will load the data from the pickle files. For parts 1 and 2, you will use
 # p1_data.pkl. For Part 3, you will use pt3_data.pkl.
 ################################################################################################
-with open('data/pt1_data.pkl', 'rb') as file:
-    data = pickle.load(file)
+# with open('data/pt1_data.pkl', 'rb') as file:
+#     data = pickle.load(file)
 
+with open('data/pt3_data.pkl', 'rb') as file:
+    data = pickle.load(file)
 ################################################################################################
 # Each element of the data dictionary is stored as an item from the data dictionary, which we
 # will store in local variables, described by the following:
@@ -100,9 +103,11 @@ lidar.data = (C_li @ lidar.data.T).T + t_i_li
 ################################################################################################
 var_imu_f = 0.10
 var_imu_w = 0.25
-var_gnss  = 0.01
-var_lidar = 1.00 # default: 1.00
-                # good choice for part 2: 7.00
+var_gnss  = 10.00 # default: 0.01
+                  # good choice for part 3: 10.00
+var_lidar = 10.00  # default: 1.00
+                  # good choice for part 2: 100.00
+                  # good choice for part 3: 10.00
 
 ################################################################################################
 # We can also set up some constants that won't change for any iteration of our solver.
@@ -127,6 +132,9 @@ p_cov = np.zeros([imu_f.data.shape[0], 9, 9])  # covariance matrices at each tim
 p_est[0] = gt.p[0]
 v_est[0] = gt.v[0]
 q_est[0] = Quaternion( euler = gt.r[0] ).to_numpy()
+print("q_est[0] =", q_est[0])
+C_ns_0 = Quaternion(*q_est[0]).to_mat()
+print("C_ns_0 =", C_ns_0)
 p_cov[0] = np.zeros(9)  # covariance of estimate
 gnss_i  = 0
 lidar_i = 0
@@ -158,15 +166,19 @@ def skew_operator(a):
 ################################################################################################
 def quaternion_left_prod(theta):
 
+    ### normalize the angle first
+    theta = angle_normalize(theta)
+
     ### construct quaternion based on theta info
     theta_norm = np.sqrt(theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2)
     q_w = np.sin(theta_norm / 2)
     q_v = theta / theta_norm * np.cos(theta_norm / 2)
 
-    Omega = np.identity(4) * q_w 
+    Omega = np.zeros([4, 4])
     Omega[0, 1:4]   = -q_v.T
     Omega[1:4, 0]   = q_v
     Omega[1:4, 1:4] = skew_operator(q_v)
+    Omega = Omega + np.identity(4) * q_w 
 
     return Omega
 
@@ -179,15 +191,19 @@ def quaternion_left_prod(theta):
 ################################################################################################
 def quaternion_right_prod(theta):
 
+    ### normalize the angle first
+    theta = angle_normalize(theta)
+
     ### construct quaternion based on theta info
     theta_norm = np.sqrt(theta[0] ** 2 + theta[1] ** 2 + theta[2] ** 2)
     q_w = np.sin(theta_norm / 2)
     q_v = theta / theta_norm * np.cos(theta_norm / 2)
 
-    Omega = np.identity(4) * q_w 
+    Omega = np.zeros([4, 4])
     Omega[0, 1:4]   = -q_v.T
     Omega[1:4, 0]   = q_v
     Omega[1:4, 1:4] = -skew_operator(q_v)
+    Omega = Omega + np.identity(4) * q_w 
 
     return Omega
 
@@ -216,7 +232,11 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     # 3.3 Correct predicted state
     p_hat = p_check + delta_x_k[0:3]
     v_hat = v_check + delta_x_k[3:6]
-    q_hat = quaternion_left_prod( delta_x_k[6:9] ) @ q_check
+    ## use of self built function:
+    #  q_hat = quaternion_left_prod( delta_x_k[6:9] ) @ q_check
+    ## use of pre-built functions:
+    q_obj = Quaternion( euler = delta_x_k[6:9] ).quat_mult_left(q_check)
+    q_hat = Quaternion(*q_obj).normalize().to_numpy()
 
     # 3.4 Compute corrected covariance
     # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
@@ -241,26 +261,33 @@ F_k         =  np.identity(9)
 L_k         =  np.zeros([9, 6])
 L_k[3:9, :] =  np.identity(6)
 Q           =  np.identity(6)               # covariance matrix related to noise of IMU
-Q[0:3, 0:3] = Q[0:3, 0:3] * var_imu_f       # covariance matrix related to special force of IMU
-Q[3:6, 3:6] = Q[3:6, 3:6] * var_imu_w       # covariance matrix related to rotational speed of IMU
+Q[0:3, 0:3] =  Q[0:3, 0:3] * var_imu_f      # covariance matrix related to special force of IMU
+Q[3:6, 3:6] =  Q[3:6, 3:6] * var_imu_w      # covariance matrix related to rotational speed of IMU
 
 for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial prediction from gt
-    delta_t = imu_f.t[k] - imu_f.t[k - 1]
 
+    # some preparations
+    delta_t = imu_f.t[k] - imu_f.t[k - 1]
     Q_k = Q * delta_t * delta_t
+    C_ns = Quaternion(*q_est[k-1]).to_mat()
+    # print("C_ns = ", C_ns)
 
     # 1. Update state with IMU inputs
     ## 1-1: update position states
-    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_li @ imu_f.data[k-1] + g) # TODO: confirm C_ns == C_li 
+    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_ns @ imu_f.data[k-1] + g) # TODO: confirm it's -g or +g
     ## 1-2: update velocity states
-    v_est[k] = v_est[k-1] + delta_t * (C_li @ imu_f.data[k-1] + g)                                 # TODO: confirm C_ns == C_li
+    v_est[k] = v_est[k-1] + delta_t * (C_ns @ imu_f.data[k-1] + g)                                 # TODO: confirm it's -g or +g
     ## 1-3: update orientation states
-    q_est[k] = quaternion_right_prod(imu_w.data[k-1] * delta_t) @ q_est[k-1]
+    ## use of self built function:
+    # q_est[k] = quaternion_right_prod(imu_w.data[k-1] * delta_t) @ q_est[k-1]
+    ## use of pre-built functions:
+    q_tmp = Quaternion( euler = (imu_w.data[k-1] * delta_t) ).quat_mult_right( q_est[k-1] )
+    q_est[k] = Quaternion(*q_tmp).normalize().to_numpy()
 
     # 2. Propagate uncertainty
     ## 2-1: Linearize the motion model and compute Jacobians
     F_k[0:3, 3:6] = np.identity(3) * delta_t
-    F_k[3:6, 6:9] = - skew_operator( C_li @ imu_f.data[k-1] ) * delta_t
+    F_k[3:6, 6:9] = - skew_operator( C_ns @ imu_f.data[k-1] ) * delta_t
 
     ## 2-2: execute the propagate uncertainty process
     p_cov[k] = F_k @ p_cov[k-1] @ F_k.T + L_k @ Q_k @ L_k.T
@@ -360,13 +387,13 @@ plt.show()
 ################################################################################################
 
 # Pt. 1 submission
-p1_indices = [9000, 9400, 9800, 10200, 10600]
-p1_str = ''
-for val in p1_indices:
-    for i in range(3):
-        p1_str += '%.3f ' % (p_est[val, i])
-with open('pt1_submission.txt', 'w') as file:
-    file.write(p1_str)
+# p1_indices = [9000, 9400, 9800, 10200, 10600]
+# p1_str = ''
+# for val in p1_indices:
+#     for i in range(3):
+#         p1_str += '%.3f ' % (p_est[val, i])
+# with open('pt1_submission.txt', 'w') as file:
+#     file.write(p1_str)
 
 # Pt. 2 submission
 # p2_indices = [9000, 9400, 9800, 10200, 10600]
@@ -378,10 +405,10 @@ with open('pt1_submission.txt', 'w') as file:
 #     file.write(p2_str)
 
 # Pt. 3 submission
-# p3_indices = [6800, 7600, 8400, 9200, 10000]
-# p3_str = ''
-# for val in p3_indices:
-#     for i in range(3):
-#         p3_str += '%.3f ' % (p_est[val, i])
-# with open('pt3_submission.txt', 'w') as file:
-#     file.write(p3_str)
+p3_indices = [6800, 7600, 8400, 9200, 10000]
+p3_str = ''
+for val in p3_indices:
+    for i in range(3):
+        p3_str += '%.3f ' % (p_est[val, i])
+with open('pt3_submission.txt', 'w') as file:
+    file.write(p3_str)
