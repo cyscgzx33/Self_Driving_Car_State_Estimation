@@ -206,13 +206,11 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     # evaluate size chain: (9 x 9) x (9 x 3) x ( (3 x 9) x (9 x 9) x (9 x 3) + (3 x 3) )
     # K_k should have a size: (9 x 3)
     K_k = p_cov_check @ H_k.T @ inv(H_k @ p_cov_check @ H_k.T + sensor_var)
-    print( "K_k has a shape =", np.shape(K_k) )
 
     # 3.2 Compute error state
     # evaluate size chain: (9 x 3) x ( (3 x 1) - (3 x 1) )
     # delta_x_k should have a size: (9 x 1)
     delta_x_k = K_k @ (y_k - p_check)
-    print( "delta_x_k has a shape =", np.shape(delta_x_k) )
 
     # 3.3 Correct predicted state
     p_hat = p_check + delta_x_k[0:3]
@@ -222,7 +220,6 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     # 3.4 Compute corrected covariance
     # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
     p_cov_hat = ( np.identity(9) - K_k @ H_k ) @ p_cov_check
-    print( "p_cov_hat has a shape =", np.shape(p_cov_hat) )
 
     return p_hat, v_hat, q_hat, p_cov_hat
 
@@ -265,16 +262,22 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     F_k[3:6, 6:9] = -skew_operator( C_li @ imu_f.data[k-1] ) * delta_t
 
     ## 2-2: execute the propagate uncertainty process
-    p_cov = F_k @ p_cov @ F_k.T + L_k @ Q_k @ L_k.T
+    p_cov[k] = F_k @ p_cov[k-1] @ F_k.T + L_k @ Q_k @ L_k.T
 
     # 3. Check availability of GNSS and LIDAR measurements
     ## at t_imu[k] timestamp GNSS has input
     if np.any( t_gnss == t_imu[k] ):
-        [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_GNSS, p_cov[k], gnss.data[k], p_est[k], v_est[k], q_est[k] )
+        # find time index @ iteration k
+        # it returns a tuple, (array, description), and the array should only contain 1 element
+        t_k = np.where( t_gnss == t_imu[k] )[0][0]
+        [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_GNSS, p_cov[k], gnss.data[t_k], p_est[k], v_est[k], q_est[k] )
 
     ## at t_imu[k] timestamp Lidar has input
     if np.any( t_lidar == t_imu[k] ):
-        [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_Lidar, p_cov[k], lidar.data[k], p_est[k], v_est[k], q_est[k] )
+        # find time index @ iteration k
+        # it returns a tuple, (array, description), and the array should only contain 1 element
+        t_k = np.where( t_lidar == t_imu[k] )[0][0]
+        [ p_est[k], v_est[k], q_est[k], p_cov[k] ] = measurement_update( R_Lidar, p_cov[k], lidar.data[t_k], p_est[k], v_est[k], q_est[k] )
 
     # Update states (save) # TODO: make sure no extra processes needed
 
