@@ -158,7 +158,8 @@ def skew_operator(a):
     return op_mat
 
 #### Util function: quaternion product (left) ##################################################
-
+# TODO: right now, it's incorrect, need to FIX the way creating a quaternion object
+#       specifically, how to convert an Euler angle into a quaternion object 
 ################################################################################################
 # it computes: q(theta) "x" q = Omega_q_l @ q
 # input: theta 
@@ -183,7 +184,8 @@ def quaternion_left_prod(theta):
     return Omega
 
 #### Util function: quaternion product (right) #################################################
-
+# TODO: right now, it's incorrect, need to FIX the way creating a quaternion object
+#       specifically, how to convert an Euler angle into a quaternion object 
 ################################################################################################
 # it computes: q "x" q(theta) = Omega_q_r @ q
 # input: theta
@@ -206,6 +208,19 @@ def quaternion_right_prod(theta):
     Omega = Omega + np.identity(4) * q_w 
 
     return Omega
+
+#### Util function: normalize a quaternion  ####################################################
+
+################################################################################################
+# it computes: q "x" q(theta) = Omega_q_r @ q
+# input: theta
+# output: Omega_q_r 
+################################################################################################
+def normalize_quaternion(q):
+
+    norm = np.sqrt(q[0] ** 2 + q[1] ** 2 + q[2] ** 2 + q[3] ** 2)
+
+    return q / norm
 
 #### 4. Measurement Update #####################################################################
 
@@ -233,7 +248,8 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     p_hat = p_check + delta_x_k[0:3]
     v_hat = v_check + delta_x_k[3:6]
     ## use of self built function:
-    #  q_hat = quaternion_left_prod( delta_x_k[6:9] ) @ q_check
+    # q_hat = quaternion_left_prod( delta_x_k[6:9] ) @ q_check
+    # q_hat = normalize_quaternion(q_hat)
     ## use of pre-built functions:
     q_obj = Quaternion( euler = delta_x_k[6:9] ).quat_mult_left(q_check)
     q_hat = Quaternion(*q_obj).normalize().to_numpy()
@@ -274,12 +290,13 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
 
     # 1. Update state with IMU inputs
     ## 1-1: update position states
-    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_ns @ imu_f.data[k-1] + g) # TODO: confirm it's -g or +g
+    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_ns @ imu_f.data[k-1] + g)
     ## 1-2: update velocity states
-    v_est[k] = v_est[k-1] + delta_t * (C_ns @ imu_f.data[k-1] + g)                                 # TODO: confirm it's -g or +g
+    v_est[k] = v_est[k-1] + delta_t * (C_ns @ imu_f.data[k-1] + g)
     ## 1-3: update orientation states
     ## use of self built function:
     # q_est[k] = quaternion_right_prod(imu_w.data[k-1] * delta_t) @ q_est[k-1]
+    # q_est[k] = normalize_quaternion(q_est[k])
     ## use of pre-built functions:
     q_tmp = Quaternion( euler = (imu_w.data[k-1] * delta_t) ).quat_mult_right( q_est[k-1] )
     q_est[k] = Quaternion(*q_tmp).normalize().to_numpy()
