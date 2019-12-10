@@ -101,7 +101,8 @@ lidar.data = (C_li @ lidar.data.T).T + t_i_li
 var_imu_f = 0.10
 var_imu_w = 0.25
 var_gnss  = 0.01
-var_lidar = 1.00
+var_lidar = 1.00 # default: 1.00
+                # good choice for part 2: 7.00
 
 ################################################################################################
 # We can also set up some constants that won't change for any iteration of our solver.
@@ -197,7 +198,7 @@ def quaternion_right_prod(theta):
 # a function for it.
 ################################################################################################
 def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
-    
+
     # construct H_k = [I, 0, 0] (size = 3 x 9)
     H_k = np.zeros([3, 9])
     H_k[0:3, 0:3] = np.identity(3)
@@ -231,17 +232,17 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
 ################################################################################################
 
 # Define some suppotive variables
-R_GNSS  =  np.identity(3) * var_gnss    # covariance matrix related to GNSS
-R_Lidar =  np.identity(3) * var_lidar   # covariance matrix related to Lidar
-t_imu   =  imu_f.t                      # timestanps of imu
-t_gnss  =  gnss.t                       # timestamps of gnss
-t_lidar =  lidar.t                      # timestamps of lidar 
-F_k     =  np.identity(9)               # TODO: confirm it's 10 or 9
-L_k         =  np.zeros([9, 6])         # TODO: confirm it's 10 or 9
+R_GNSS      =  np.identity(3) * var_gnss    # covariance matrix related to GNSS
+R_Lidar     =  np.identity(3) * var_lidar   # covariance matrix related to Lidar
+t_imu       =  imu_f.t                      # timestanps of imu
+t_gnss      =  gnss.t                       # timestamps of gnss
+t_lidar     =  lidar.t                      # timestamps of lidar 
+F_k         =  np.identity(9)
+L_k         =  np.zeros([9, 6])
 L_k[3:9, :] =  np.identity(6)
-Q           =  np.identity(6)           # covariance matrix related to noise of IMU
-Q[0:3, 0:3] = Q[0:3, 0:3] * var_imu_f   # covariance matrix related to special force of IMU
-Q[3:6, 3:6] = Q[3:6, 3:6] * var_imu_w   # covariance matrix related to rotational speed of IMU
+Q           =  np.identity(6)               # covariance matrix related to noise of IMU
+Q[0:3, 0:3] = Q[0:3, 0:3] * var_imu_f       # covariance matrix related to special force of IMU
+Q[3:6, 3:6] = Q[3:6, 3:6] * var_imu_w       # covariance matrix related to rotational speed of IMU
 
 for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial prediction from gt
     delta_t = imu_f.t[k] - imu_f.t[k - 1]
@@ -250,16 +251,16 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
 
     # 1. Update state with IMU inputs
     ## 1-1: update position states
-    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_li @ imu_f.data[k-1] + g) # TODO: obtain f_k_1 (done, f_k_1 = imu_f.data[k-1]); confirm C_ns == C_li 
+    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + delta_t ** 2 / 2 * (C_li @ imu_f.data[k-1] + g) # TODO: confirm C_ns == C_li 
     ## 1-2: update velocity states
-    v_est[k] = v_est[k-1] + delta_t * (C_li @ imu_f.data[k-1] + g)                                 # TODO: obtain f_k_1 (done, f_k_1 = imu_f.data[k-1]); confirm C_ns == C_li
+    v_est[k] = v_est[k-1] + delta_t * (C_li @ imu_f.data[k-1] + g)                                 # TODO: confirm C_ns == C_li
     ## 1-3: update orientation states
     q_est[k] = quaternion_right_prod(imu_w.data[k-1] * delta_t) @ q_est[k-1]
 
     # 2. Propagate uncertainty
     ## 2-1: Linearize the motion model and compute Jacobians
     F_k[0:3, 3:6] = np.identity(3) * delta_t
-    F_k[3:6, 6:9] = -skew_operator( C_li @ imu_f.data[k-1] ) * delta_t
+    F_k[3:6, 6:9] = - skew_operator( C_li @ imu_f.data[k-1] ) * delta_t
 
     ## 2-2: execute the propagate uncertainty process
     p_cov[k] = F_k @ p_cov[k-1] @ F_k.T + L_k @ Q_k @ L_k.T
