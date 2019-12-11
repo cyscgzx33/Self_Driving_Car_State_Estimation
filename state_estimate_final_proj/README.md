@@ -1,22 +1,22 @@
-# Final Project: State Estimation and Localization for Self-Driving Cars <br />
+# Final Project: Multi-Sensor (IMU + Lidar) Fusion for Pose Estimation  <br />
 
 ## Results
 * Part 1: Ideal case
 <p align="center">
-  <img src="tracking_part_1.png" width="400" />
-  <img src="analysis_part_1.png" width="400" />
+  <img src="tracking_part_1.png" width="350" />
+  <img src="analysis_part_1.png" width="350" />
 </p>
 
 * Part 2: Sensor's poor calibration
 <p align="center">
-  <img src="tracking_part_2.png" width="400" />
-  <img src="analysis_part_2.png" width="400" />
+  <img src="tracking_part_2.png" width="350" />
+  <img src="analysis_part_2.png" width="350" />
 </p>
 
 * Part 3: Sensor's infomation drops
 <p align="center">
-  <img src="tracking_part_3.png" width="400" />
-  <img src="analysis_part_3.png" width="400" />
+  <img src="tracking_part_3.png" width="350" />
+  <img src="analysis_part_3.png" width="350" />
 </p>
 
 

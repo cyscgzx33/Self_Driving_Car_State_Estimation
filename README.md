@@ -10,6 +10,12 @@
 * Using **error-state kinematics model** as the motion/measurement model
 * Using **quaternion kinematics** as the rotation process update
 * Implement the algorithm in `Python3`
+* Sample pictures for the results
+<p align="center">
+  <img src="./state_estimate_final_proj/tracking_part_1.png" width="350" />
+  <img src="./state_estimate_final_proj/analysis_part_1.png" width="350" />
+</p>
+
 
 ## Reference
 ### Websites
