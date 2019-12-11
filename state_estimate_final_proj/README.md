@@ -22,7 +22,7 @@
 
 ## Key Algorithms
 * Conversion from **Euler angle** to **Quaternion**:
-    ```
+    ```python
     def to_euler(self):
         """Return as xyz (roll pitch yaw) Euler angles."""
         roll = np.arctan2(2 * (self.w * self.x + self.y * self.z), 1 - 2 * (self.x**2 + self.y**2))
@@ -34,7 +34,7 @@
     * Note: the function should be order sensitive, here it is implemented with a sequence ***roll-pitch-yaw***, but **WHY DO WE HAVE TO FOLLOW THIS ORDER**? Does someone have any idea about this?
 * Quaternion multiplication:
     * As an example, the `quaternion left multiplication` looks like this:
-    ```
+    ```python
     def quat_mult_right(self, q, out='np'):
         """
         Quaternion multiplication operation - in this case, perform multiplication
