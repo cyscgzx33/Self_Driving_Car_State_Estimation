@@ -16,11 +16,11 @@ import rotations
 # This is where you will load the data from the pickle files. For parts 1 and 2, you will use
 # p1_data.pkl. For Part 3, you will use pt3_data.pkl.
 ################################################################################################
-# with open('data/pt1_data.pkl', 'rb') as file:
-#     data = pickle.load(file)
-
-with open('data/pt3_data.pkl', 'rb') as file:
+with open('data/pt1_data.pkl', 'rb') as file:
     data = pickle.load(file)
+
+# with open('data/pt3_data.pkl', 'rb') as file:
+#     data = pickle.load(file)
 ################################################################################################
 # Each element of the data dictionary is stored as an item from the data dictionary, which we
 # will store in local variables, described by the following:
@@ -179,7 +179,7 @@ def quaternion_left_prod(theta):
     Omega[0, 1:4]   = -q_v.T
     Omega[1:4, 0]   = q_v
     Omega[1:4, 1:4] = skew_operator(q_v)
-    Omega = Omega + np.identity(4) * q_w 
+    Omega = Omega + np.identity(4) * q_w
 
     return Omega
 
@@ -189,7 +189,7 @@ def quaternion_left_prod(theta):
 ################################################################################################
 # it computes: q "x" q(theta) = Omega_q_r @ q
 # input: theta
-# output: Omega_q_r 
+# output: Omega_q_r
 ################################################################################################
 def quaternion_right_prod(theta):
 
@@ -205,7 +205,7 @@ def quaternion_right_prod(theta):
     Omega[0, 1:4]   = -q_v.T
     Omega[1:4, 0]   = q_v
     Omega[1:4, 1:4] = -skew_operator(q_v)
-    Omega = Omega + np.identity(4) * q_w 
+    Omega = Omega + np.identity(4) * q_w
 
     return Omega
 
@@ -253,6 +253,7 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
     ## use of pre-built functions:
     q_obj = Quaternion( euler = delta_x_k[6:9] ).quat_mult_left(q_check)
     q_hat = Quaternion(*q_obj).normalize().to_numpy()
+    # q_hat = Quaternion(*q_obj).to_numpy() # Note: after test, it tuns out we don't have to normalize the quaternion
 
     # 3.4 Compute corrected covariance
     # evaluate size chain: ( (9 x 9) - (9 x 3) x (3 x 9) ) x (9 x 9)
@@ -300,6 +301,7 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     ## use of pre-built functions:
     q_tmp = Quaternion( euler = (imu_w.data[k-1] * delta_t) ).quat_mult_right( q_est[k-1] )
     q_est[k] = Quaternion(*q_tmp).normalize().to_numpy()
+    # q_est[k] = Quaternion(*q_tmp).to_numpy() # Note: after test, it tuns out we don't have to normalize the quaternion
 
     # 2. Propagate uncertainty
     ## 2-1: Linearize the motion model and compute Jacobians
@@ -404,13 +406,13 @@ plt.show()
 ################################################################################################
 
 # Pt. 1 submission
-# p1_indices = [9000, 9400, 9800, 10200, 10600]
-# p1_str = ''
-# for val in p1_indices:
-#     for i in range(3):
-#         p1_str += '%.3f ' % (p_est[val, i])
-# with open('pt1_submission.txt', 'w') as file:
-#     file.write(p1_str)
+p1_indices = [9000, 9400, 9800, 10200, 10600]
+p1_str = ''
+for val in p1_indices:
+    for i in range(3):
+        p1_str += '%.3f ' % (p_est[val, i])
+with open('pt1_submission.txt', 'w') as file:
+    file.write(p1_str)
 
 # Pt. 2 submission
 # p2_indices = [9000, 9400, 9800, 10200, 10600]
@@ -422,10 +424,10 @@ plt.show()
 #     file.write(p2_str)
 
 # Pt. 3 submission
-p3_indices = [6800, 7600, 8400, 9200, 10000]
-p3_str = ''
-for val in p3_indices:
-    for i in range(3):
-        p3_str += '%.3f ' % (p_est[val, i])
-with open('pt3_submission.txt', 'w') as file:
-    file.write(p3_str)
+# p3_indices = [6800, 7600, 8400, 9200, 10000]
+# p3_str = ''
+# for val in p3_indices:
+#     for i in range(3):
+#         p3_str += '%.3f ' % (p_est[val, i])
+# with open('pt3_submission.txt', 'w') as file:
+#     file.write(p3_str)
