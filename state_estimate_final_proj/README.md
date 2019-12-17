@@ -66,7 +66,7 @@
     * Note: it is critical to choose left or right multiplication for quaternions, because it impacts the **coordinate system** in consideration is *local* or *global* 
 
 ## Tips to Achieve Proper Results
-* For all three parts of the project, follow the [course slides](ESKF_Localization_by_Fusing_IMU_plus_Lidar.pdf) should be a great first step; the slides contain correct contexts and proper steps to achieve the final goal
+* For all three parts of the project, following the [course slides](ESKF_Localization_by_Fusing_IMU_plus_Lidar.pdf) should be a great first step; the slides contain correct contexts and proper steps to achieve the final goal
 * Make good use of functions from the provided [util code](rotations.py), although it is a great experience to implement all the functions by oneself, just as I did (sadly, there are still some critical mistakes, I'll fix them ASAP)
 * If the mathematic terminaligy, **quaternion**, is a brand new friend of you (*just the same situation as I was in*), the two references I listed below would help you a lot to get farmiliar with it; in this course, the professor utilized the notations the same as [Sola's paper](https://arxiv.org/pdf/1711.02508.pdf), and [Jia's notes](http://graphics.stanford.edu/courses/cs348a-17-winter/Papers/quaternion.pdf) also provides a great tour to the topic.
 
